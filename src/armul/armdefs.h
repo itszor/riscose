@@ -326,6 +326,7 @@ extern void ARMul_CoProAttach(ARMul_State *state, unsigned number,
                               ARMul_CDPs *cdp,
                               ARMul_CPReads *read, ARMul_CPWrites *write) ;
 extern void ARMul_CoProDetach(ARMul_State *state, unsigned number) ;
+extern ARMword ARMul_FPEInstr(ARMul_State *state, ARMword instr) ;
 
 /***************************************************************************\
 *               Definitons of things in the host environment                *

@@ -444,6 +444,10 @@ void ARMul_LDC(ARMul_State *state,ARMword instr,ARMword address)
 {unsigned cpab ;
  ARMword data ;
 
+ if (CPNum == 1 || CPNum == 2) { /* the FPA: NWFPE */
+    (void) ARMul_FPEInstr(state,instr) ;
+    return ;
+    }
  UNDEF_LSCPCBaseWb ;
  if (ADDREXCEPT(address)) {
     INTERNALABORT(address) ;
@@ -489,6 +493,10 @@ void ARMul_STC(ARMul_State *state,ARMword instr,ARMword address)
 {unsigned cpab ;
  ARMword data ;
 
+ if (CPNum == 1 || CPNum == 2) { /* the FPA: NWFPE */
+    (void) ARMul_FPEInstr(state,instr) ;
+    return ;
+    }
  UNDEF_LSCPCBaseWb ;
  if (ADDREXCEPT(address) || VECTORACCESS(address)) {
     INTERNALABORT(address) ;
@@ -534,6 +542,10 @@ void ARMul_STC(ARMul_State *state,ARMword instr,ARMword address)
 void ARMul_MCR(ARMul_State *state,ARMword instr, ARMword source)
 {unsigned cpab ;
 
+ if (CPNum == 1 || CPNum == 2) { /* the FPA: NWFPE */
+    (void) ARMul_FPEInstr(state,instr) ;
+    return ;
+    }
  cpab = (state->MCR[CPNum])(state,ARMul_FIRST,instr,source) ;
  while (cpab == ARMul_BUSY) {
     ARMul_Icycles(state,1,0) ;
@@ -560,6 +572,9 @@ ARMword ARMul_MRC(ARMul_State *state,ARMword instr)
 {unsigned cpab ;
  ARMword result = 0 ;
 
+ if (CPNum == 1 || CPNum == 2) { /* the FPA: NWFPE */
+    return(ARMul_FPEInstr(state,instr)) ;
+    }
  cpab = (state->MRC[CPNum])(state,ARMul_FIRST,instr,&result) ;
  while (cpab == ARMul_BUSY) {
     ARMul_Icycles(state,1,0) ;
@@ -589,6 +604,10 @@ ARMword ARMul_MRC(ARMul_State *state,ARMword instr)
 void ARMul_CDP(ARMul_State *state,ARMword instr)
 {unsigned cpab ;
 
+ if (CPNum == 1 || CPNum == 2) { /* the FPA: NWFPE */
+    (void) ARMul_FPEInstr(state,instr) ;
+    return ;
+    }
  cpab = (state->CDP[CPNum])(state,ARMul_FIRST,instr) ;
  while (cpab == ARMul_BUSY) {
     ARMul_Icycles(state,1,0) ;

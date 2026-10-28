@@ -2,6 +2,8 @@ AM_CPPFLAGS = -I$(srcdir)/osapi -I$(srcdir)/oslib -I$(srcdir)/include
 
 if ARM_ARMUL
 arm = armul
+fpe = nwfpe
+fpe_lib = nwfpe/libnwfpe.a
 endif
 if ARM_SLEEVE
 arm = sleeve
@@ -9,9 +11,9 @@ endif
 if ARM_NATIVE
 arm = native
 endif
-SUBDIRS = monty defmod include osapi oslib rom $(arm) os
+SUBDIRS = monty defmod include osapi oslib rom $(arm) $(fpe) os
 DIST_SUBDIRS = monty defmod include rom armul native sleeve osapi os \
-    oslib
+    oslib nwfpe
 
 bin_PROGRAMS = riscose
 noinst_PROGRAMS = heaptest
@@ -19,7 +21,7 @@ noinst_PROGRAMS = heaptest
 riscose_SOURCES = heap.c main.c mem.c riscose.h swi.c util.c
 riscose_LDADD = osapi/libosapi.a os/libos.a \
     rom/romimage.o \
-    @ARM@/lib@ARM@.a monty/libmonty.a \
+    @ARM@/lib@ARM@.a $(fpe_lib) monty/libmonty.a \
     -lncurses -lreadline
 
 heaptest_SOURCES = heaptest.c heap.c

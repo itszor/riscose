@@ -68,6 +68,75 @@ static void cp15_mrc(ARMul_State *state, unsigned type, ARMword instr, ARMword v
   arm_set_reg(rd, 0x41807200);
 }
 
+/* Coprocessors 1 and 2, the FPA, are emulated by NWFPE (src/nwfpe), as
+ * RISC OS's FPEmulator would from the undefined instruction trap. These
+ * are its ways into the emulated machine. */
+
+unsigned int EmulateAll(unsigned int opcode);
+void riscose_fpe_init(void);
+
+/* The flags the last FPA compare set, for ARMul_FPEInstr to return. */
+static WORD fpe_flags;
+
+unsigned long riscose_fpe_read_register(unsigned int num)
+{
+  /* The PC is the address of the instruction being emulated: Reg[15]
+   * is 8 bytes ahead of it while it executes. */
+  if (num == 15)
+    return (arm->Reg[15] - 8) & R15PCBITS;
+  return arm->Reg[num];
+}
+
+void riscose_fpe_write_register(unsigned int num, unsigned long val)
+{
+  arm_set_reg(num, val);
+}
+
+void riscose_fpe_write_flags(unsigned long val)
+{
+  fpe_flags = val;
+}
+
+unsigned int riscose_fpe_read_word(unsigned long addr)
+{
+  return ARMul_LoadWordN(arm, addr);
+}
+
+void riscose_fpe_write_word(unsigned long addr, unsigned int val)
+{
+  ARMul_StoreWordN(arm, addr, val);
+}
+
+/* An enabled floating point exception. On RISC OS the FPEmulator raises
+ * an error (in C, SIGFPE); riscose has nowhere to deliver it yet. */
+void riscose_fpe_trap(unsigned int flags)
+{
+  static const char *names[] = {
+    "invalid operation", "division by zero", "overflow", "underflow",
+    "inexact"
+  };
+  int i;
+
+  for (i = 0; i < 5 && !(flags & (1 << i)); i++)
+    ;
+  error("floating point exception (%s) at %08x\n",
+        i < 5 ? names[i] : "unknown", (WORD) riscose_fpe_read_register(15));
+}
+
+/* Called by ARMul_LDC, STC, MCR, MRC and CDP for coprocessors 1 and 2:
+ * NWFPE carries out the whole instruction, including its memory accesses
+ * and base write-back. Returns what an MRC should put in Rd (the flags,
+ * for a compare). */
+ARMword ARMul_FPEInstr(ARMul_State *state, ARMword instr)
+{
+  WORD rd = (instr >> 12) & 15;
+
+  if (!EmulateAll(instr))
+    arm_unsupported_instruction(state, 0, instr, 0);
+
+  return rd == 15 ? fpe_flags : state->Reg[rd];
+}
+
 static WORD arm_run_depth;
 void
 arm_init(void)
@@ -85,6 +154,7 @@ arm_init(void)
       arm->CDP[dummyInstr] = (ARMul_CDPs *)arm_unsupported_instruction;
   }
   arm->MRC[15] = (ARMul_MRCs *)cp15_mrc;
+  riscose_fpe_init();
   ARMul_SelectProcessor(arm, ARM3);
   ARMul_Reset(arm);
 

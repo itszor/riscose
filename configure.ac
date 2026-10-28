@@ -44,6 +44,7 @@ AC_CONFIG_FILES([ \
         man/Makefile \
         src/Makefile \
         src/armul/Makefile \
+        src/nwfpe/Makefile \
         src/defmod/Makefile \
         src/include/Makefile \
         src/monty/Makefile \
