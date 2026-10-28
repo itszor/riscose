@@ -1653,7 +1653,7 @@ swih_sharedclibrary_entry(WORD num)
         int outputs;
         int pc;
         int block;
-        WORD preserve[10];
+        WORD saved[12], err, ret;
 
         /* Drop the stack two words and put the args in r2 and r3 on */
         ARM_SET_R13(ARM_R13 - 8);
@@ -1665,25 +1665,23 @@ swih_sharedclibrary_entry(WORD num)
         ** The order is: inputs, output addresses, PC output address, block args
         */
 
-        /* If we are doing swix, set the X bit on the SWI number and fiddle
-        ** the flags so that we always return r0.
-        */
+        /* If we are doing swix, set the X bit on the SWI number. */
         if (SWI_NUM(num) == CLIB_CLIB_SWIX)
-        {
           swi_number |= 0x20000;
-          flags &= ~ 0xf0000;
-        }
+
+        /* _swi and _swix are functions: R4-R11 must survive them (APCS),
+        ** whatever the SWI does with them.
+        */
+        for (i = 4; i <= 11; i++)
+          saved[i] = arm_get_reg(i);
 
         /* Set up input registers.  In the process, we set `outputs' so that
         ** it contains the offset of any outputs within the args list.
-        ** We also need to keep a note of the old values of any registers
-        ** that we change so that we can restore them later.
         */
         outputs = 0;
-        for (i = 0; i < DIM(preserve); i++) {
+        for (i = 0; i < 10; i++) {
           if (flags & (1 << i))
           {
-            preserve[i] = arm_get_reg(i);
             arm_set_reg(i, args[outputs]);
             outputs++;
           }
@@ -1691,7 +1689,7 @@ swih_sharedclibrary_entry(WORD num)
 
         /* Count past outputs so that we find any PC output register */
         pc = outputs;
-        for (i = 0; i < DIM(preserve); i++) {
+        for (i = 0; i < 10; i++) {
           if ( flags & (1 << (31 - i)) )
             pc++;
         }
@@ -1702,49 +1700,49 @@ swih_sharedclibrary_entry(WORD num)
           block++;
 
         /* Now we know where any block args are, so set up a register with them
-        ** if there are any.  Again, we need to preserve the register if
-        ** we corrupt it.
+        ** if there are any.
         */
         if (flags & (1 << 11))
-        {
-          preserve[block_reg] = arm_get_reg(block_reg);
           arm_set_reg(block_reg, MEM_TOARM(args + block));
-        }
 
         /* Call the SWI */
         swi_trap(swi_number);
 
-        /* Put outputs into appropriate args */
-        n = outputs;
-        for (i = 0; i < DIM(preserve); i++) {
-          if ( flags & (1 << (31 - i)) )
-          {
-            MEM_WRITE_WORD(args[n], arm_get_reg(i));
-            n++;
+        /* An error (only _swix sees one: _swi's is raised) is returned,
+         * and the outputs are left alone. */
+        err = (SWI_NUM(num) == CLIB_CLIB_SWIX && ARM_V_SET) ? ARM_R0 : 0;
+
+        if (!err) {
+          /* Put outputs into appropriate args */
+          n = outputs;
+          for (i = 0; i < 10; i++) {
+            if ( flags & (1 << (31 - i)) )
+            {
+              MEM_WRITE_WORD(args[n], arm_get_reg(i));
+              n++;
+            }
           }
+
+          /* Write the PC output if required */
+          if (flags & (1 << 21))
+            MEM_WRITE_WORD(args[pc], ARM_R15_ALL);
         }
 
-        /* Return something in r0 */
+        /* _swix returns the error, or NULL; _swi the register _RETURN
+         * asks for (R0 by default). */
         r = (flags & 0xf0000) >> 16;
-        if (r <= 9)
-          ARM_SET_R0(arm_get_reg(r));
+        if (SWI_NUM(num) == CLIB_CLIB_SWIX)
+          ret = err;
+        else if (r <= 9)
+          ret = arm_get_reg(r);
         else if (r == 15)
-          ARM_SET_R0(ARM_R15_ALL);
+          ret = ARM_R15_ALL;
         else
           error("swih_sharedclibrary_entry: bad return value: %d\n", r);
 
-        /* Write the PC output if required */
-        if (flags & (1 << 21))
-          MEM_WRITE_WORD(args[pc], ARM_R15_ALL);
-
-	/* Restore any input or block input registers that we corrupted
-	 * earlier */
-        for (i = 0; i < DIM(preserve); i++) {
-          if (flags & (1 << i))
-            arm_set_reg(i, preserve[i]);
-        }
-        if (flags & (1 << 11))
-          arm_set_reg(block_reg, preserve[block_reg]);
+        for (i = 4; i <= 11; i++)
+          arm_set_reg(i, saved[i]);
+        ARM_SET_R0(ret);
 
         /* Put the stack pointer back */
         ARM_SET_R13(ARM_R13 + 8);
