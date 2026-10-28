@@ -13,6 +13,8 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <dirent.h>
+#include <strings.h>
 
 #include <monty/mem.h>
 
@@ -106,6 +108,58 @@ char *ro_path_from_host_path(const char *hostpath)
   return out;
 }
 
+/* RISC OS's filing systems ignore case; the host's needn't.  If a path
+ * doesn't exist as given, each component of it that doesn't is looked for
+ * in its directory ignoring case, as far as one is found.  A name found
+ * this way is as long as the one asked for, so the path is edited in
+ * place; a component not found (a file about to be created) and any after
+ * it are left as they are. */
+static void resolve_case(char *path)
+{
+  struct stat st;
+  char *comp, *slash;
+
+  if (lstat(path, &st) == 0)
+    return;
+
+  comp = path;
+  while (*comp == '/')
+    comp++;
+  while (*comp) {
+    int found = 1;
+
+    slash = strchr(comp, '/');
+    if (slash)
+      *slash = '\0';
+
+    if (lstat(path, &st) != 0 && strcmp(comp, ".") && strcmp(comp, "..")) {
+      char *dir = comp == path ? strdup(".")
+                : comp == path + 1 ? strdup("/")
+                : strndup(path, comp - path - 1);
+      DIR *d = dir ? opendir(dir) : NULL;
+      struct dirent *e;
+
+      found = 0;
+      while (d && (e = readdir(d)) != NULL) {
+        if (strcasecmp(e->d_name, comp) == 0) {
+          memcpy(comp, e->d_name, strlen(comp));
+          found = 1;
+          break;
+        }
+      }
+      if (d)
+        closedir(d);
+      free(dir);
+    }
+
+    if (slash)
+      *slash = '/';
+    if (!found || !slash)
+      break;
+    comp = slash + 1;
+  }
+}
+
 char *host_path_from_ro_path(const char *ropath)
 {
   const char *end = ropath;
@@ -178,6 +232,7 @@ char *host_path_from_ro_path(const char *ropath)
     }
   }
   *p = '\0';
+  resolve_case(out);
   //fprintf(stderr, "-> hpfrp: '%s'\n", out);
 
   return out;
