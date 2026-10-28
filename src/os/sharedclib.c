@@ -1186,8 +1186,21 @@ swih_sharedclibrary_entry(WORD num)
       return 0;
 
     case CLIB_CLIB_REMOVE: /* 4-304 */
-      /*ARM_SET_R0(remove(MEM_TOHOST(ARM_R0)));*/
-        fprintf(stderr, "File %s not removed\n", (char*) MEM_TOHOST(ARM_R0));
+      {
+        char *fn = host_path_from_ro_path((char *) MEM_TOHOST(ARM_R0));
+        ARM_SET_R0(fn != NULL && remove(fn) == 0 ? 0 : -1);
+        free(fn);
+      }
+      return 0;
+
+    case CLIB_CLIB_RENAME:
+      {
+        char *from = host_path_from_ro_path((char *) MEM_TOHOST(ARM_R0));
+        char *to = host_path_from_ro_path((char *) MEM_TOHOST(ARM_R1));
+        ARM_SET_R0(from != NULL && to != NULL && rename(from, to) == 0 ? 0 : -1);
+        free(from);
+        free(to);
+      }
       return 0;
 
     /* FIXME: These functions will only work on 32-bit machines! */
