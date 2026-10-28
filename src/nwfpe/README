@@ -14,7 +14,11 @@ The files are those of the Linux kernel's arch/arm/nwfpe, as of commit
           module glue and pt_regs access): one FPA, set up by
           riscose_fpe_init(); registers, flags and memory reached through
           src/armul/arm.c; a trapped exception reported there rather than
-          sent as SIGFPE.
+          sent as SIGFPE. fpmodule.c also has riscose_fpe_support(): the
+          FPA's transcendental operations (LOG, LGN, EXP, SIN, COS, TAN,
+          ASN, ACS, ATN, POW, RPW, POL), which NWFPE leaves out as the
+          FPA10 left them to Acorn's support code, computed in double
+          precision with the host's libm.
   compat/ the few kernel headers the other files include (thread state,
           get_user/put_user, do_div).
   softfloat-macros

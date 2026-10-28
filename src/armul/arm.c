@@ -73,6 +73,7 @@ static void cp15_mrc(ARMul_State *state, unsigned type, ARMword instr, ARMword v
  * are its ways into the emulated machine. */
 
 unsigned int EmulateAll(unsigned int opcode);
+unsigned int riscose_fpe_support(const unsigned int opcode);
 void riscose_fpe_init(void);
 
 /* The flags the last FPA compare set, for ARMul_FPEInstr to return. */
@@ -131,7 +132,10 @@ ARMword ARMul_FPEInstr(ARMul_State *state, ARMword instr)
 {
   WORD rd = (instr >> 12) & 15;
 
-  if (!EmulateAll(instr))
+  /* What NWFPE leaves out, the FPA's transcendental operations, is done
+   * by the support code in src/nwfpe/fpmodule.c, as Acorn's support code
+   * did for the FPA10. */
+  if (!EmulateAll(instr) && !riscose_fpe_support(instr))
     arm_unsupported_instruction(state, 0, instr, 0);
 
   return rd == 15 ? fpe_flags : state->Reg[rd];
