@@ -849,7 +849,7 @@ sharedclibrary_build_stubs(WORD first, WORD num)
 os_error*
 swih_sharedclibrary(WORD num)
 {
-  WORD *stub_list, c, v;
+  WORD *stub_list, c, v, n;
 
     DEBUG(SWI, ("sharedclib swi %#x\n", num));
 
@@ -884,19 +884,23 @@ swih_sharedclibrary(WORD num)
         {
 	 switch (stub_list[c])
            {
+	   /* Stubs from an older library have a shorter vector: fill as
+	    * much of it as there is, as the library does. */
 	   case 1  : /* Kernel module */
-	     if ((stub_list[c+2] - stub_list[c+1]) < (CLIB_KERN_JUMPPOINTS*4))
-               return ERR_SHAREDCLIBRARY_VECTORTOOSMALL();
-             for (v=0; v!=CLIB_KERN_JUMPPOINTS; v++)
+             n = (stub_list[c+2] - stub_list[c+1]) / 4;
+             if (n > CLIB_KERN_JUMPPOINTS)
+               n = CLIB_KERN_JUMPPOINTS;
+             for (v=0; v!=n; v++)
                MEM_WRITE_WORD(stub_list[c+1]+(v*4),
 			      CLIB_STUB(stub_list[c+1]+(v*4), CLIB_KERN_BASE + v));
              arm_cacheflush(stub_list[c+1], stub_list[c+2]);
              break;
 
 	   case 2  : /* C Library module */
-	     if ((stub_list[c+2] - stub_list[c+1]) < (CLIB_CLIB_JUMPPOINTS*4))
-               return ERR_SHAREDCLIBRARY_VECTORTOOSMALL();
-             for (v=0; v!=CLIB_CLIB_JUMPPOINTS; v++)
+             n = (stub_list[c+2] - stub_list[c+1]) / 4;
+             if (n > CLIB_CLIB_JUMPPOINTS)
+               n = CLIB_CLIB_JUMPPOINTS;
+             for (v=0; v!=n; v++)
                MEM_WRITE_WORD(stub_list[c+1]+(v*4),
 			      CLIB_STUB(stub_list[c+1]+(v*4), CLIB_CLIB_BASE + v));
 
