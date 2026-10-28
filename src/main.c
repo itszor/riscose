@@ -22,6 +22,8 @@
 #include <sys/stat.h>
 #include <termios.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <signal.h>
 
 #include "config.h"
 #include "monty/monty.h"
@@ -40,12 +42,27 @@ static int string_to_int(char *s, int *i);
 
 static struct termios orig_stdin_state;
 
+/* The terminal, as stdin was at the start: the program may reopen stdin
+ * (the C library's freopen(..., stdin) reopens the host's), and the
+ * terminal's state must still be put back. */
+static int console_fd = -1;
+
 static void
 restore_console_state(void)
 {
-  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_stdin_state) != 0) {
-      error("tcsetattr failed\n");
+  if (console_fd >= 0 &&
+      tcsetattr(console_fd, TCSAFLUSH, &orig_stdin_state) != 0) {
+      warn("tcsetattr failed: the terminal's settings weren't restored\n");
   }
+}
+
+/* A signal that ends riscose still has to leave the terminal as it was. */
+static void
+restore_console_and_die(int sig)
+{
+  restore_console_state();
+  signal(sig, SIG_DFL);
+  raise(sig);
 }
 
 static void
@@ -54,17 +71,24 @@ console_init(void)
   if (isatty(STDIN_FILENO)) {
     /* stdin is a tty: engage raw mode */
     struct termios state;
-    if (tcgetattr(STDIN_FILENO, &orig_stdin_state) != 0) {
+    console_fd = fcntl(STDIN_FILENO, F_DUPFD_CLOEXEC, 0);
+    if (console_fd < 0) {
+        error("can't duplicate stdin\n");
+    }
+    if (tcgetattr(console_fd, &orig_stdin_state) != 0) {
         error("tcgetattr failed\n");
     }
     memcpy(&state, &orig_stdin_state, sizeof(state));
     state.c_iflag &= ICRNL;
     state.c_lflag &= ~(ECHO | ICANON | IEXTEN);
-    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &state) != 0) {
+    if (tcsetattr(console_fd, TCSAFLUSH, &state) != 0) {
         error("tcsetattr failed\n");
     }
 
     atexit(restore_console_state);
+    signal(SIGINT, restore_console_and_die);
+    signal(SIGTERM, restore_console_and_die);
+    signal(SIGHUP, restore_console_and_die);
   }
 
   if (isatty(STDOUT_FILENO)) {
