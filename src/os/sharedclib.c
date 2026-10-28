@@ -656,6 +656,139 @@ split_format_string(char *str, WORD apcs_arg, WORD is_scanf, WORD is_vararg, for
   return length;
 }
 
+/* scanf, fscanf and sscanf: each directive, with the literal text before
+ * it, is handed to the host's scanner on its own, with its argument
+ * translated to a host pointer; a "%n" after it says whether it matched.
+ * Integers are 32 bits ('l' dropped), doubles are stored in the FPA's
+ * word order. Returns the number of assignments, or EOF on input failure
+ * before the first. */
+static int
+scan_format_string(FILE *fh, const char *src, char *str, WORD apcs_arg)
+{
+  format_args args;
+  int assigned = 0, consumed = 0, r, n;
+  char spec[256];
+  size_t len;
+  char *begin, *pct;
+
+  args.is_vararg = 0;
+  args.apcs_arg = apcs_arg;
+  args.va_ptr = 0;
+
+  while (*str) {
+    int suppress = 0, is_long = 0, is_short = 0;
+    char conv;
+    WORD dest = 0;
+
+    begin = str;
+    while (*str && (*str != '%' || str[1] == '%'))
+      str += *str == '%' ? 2 : 1;
+    if (*str == '\0') {
+      /* Trailing literal text: match it, assigning nothing. */
+      len = snprintf(spec, sizeof spec, "%.*s%%n", (int) (str - begin), begin);
+      n = -1;
+      if (fh)
+        fscanf(fh, spec, &n);
+      else
+        sscanf(src + consumed, spec, &n);
+      break;
+    }
+
+    /* Copy the literal text and the directive, minus length modifiers. */
+    len = str - begin;
+    if (len > sizeof spec - 64)
+      break;
+    memcpy(spec, begin, len);
+    pct = str;
+    spec[len++] = *str++;               /* '%' */
+    if (*str == '*') {
+      suppress = 1;
+      spec[len++] = *str++;
+    }
+    while (*str >= '0' && *str <= '9' && len < sizeof spec - 32)
+      spec[len++] = *str++;
+    while (*str && strchr("hlL", *str)) {
+      if (*str == 'h') is_short = 1;
+      else is_long = 1;
+      str++;
+    }
+    conv = *str;
+    if (conv == '\0')
+      break;
+    if (is_short && strchr("diouxXn", conv))
+      spec[len++] = 'h';
+    if (is_long && strchr("eEfgG", conv))
+      spec[len++] = 'l';
+    if (conv == 'p')
+      conv = 'x';
+    spec[len++] = conv;
+    str++;
+    if (conv == '[') {
+      if (*str == '^' && len < sizeof spec - 8)
+        spec[len++] = *str++;
+      if (*str == ']' && len < sizeof spec - 8)
+        spec[len++] = *str++;
+      while (*str && *str != ']' && len < sizeof spec - 8)
+        spec[len++] = *str++;
+      if (*str == ']')
+        spec[len++] = *str++;
+    }
+    strcpy(spec + len, "%n");
+
+    if (!suppress && conv != '%')
+      dest = format_next_arg(&args);
+
+    if (conv == 'n') {
+      if (!suppress)
+        MEM_WRITE_WORD(dest, fh ? 0 : consumed);
+      /* only the literal text before it is matched */
+      len = snprintf(spec, sizeof spec, "%.*s%%n", (int) (pct - begin), begin);
+      n = -1;
+      if (fh) fscanf(fh, spec, &n); else sscanf(src + consumed, spec, &n);
+      if (n >= 0) consumed += n;
+      continue;
+    }
+
+    n = -1;
+    if (suppress) {
+      r = fh ? fscanf(fh, spec, &n) : sscanf(src + consumed, spec, &n);
+    } else if (strchr("eEfgG", conv) && is_long) {
+      double d;
+      uint64_t bits;
+      r = fh ? fscanf(fh, spec, &d, &n) : sscanf(src + consumed, spec, &d, &n);
+      if (n >= 0) {
+        memcpy(&bits, &d, sizeof bits);
+        MEM_WRITE_WORD(dest, (WORD) (bits >> 32));
+        MEM_WRITE_WORD(dest + 4, (WORD) bits);
+      }
+    } else if (strchr("eEfgG", conv)) {
+      r = fh ? fscanf(fh, spec, (float *) MEM_TOHOST(dest), &n)
+             : sscanf(src + consumed, spec, (float *) MEM_TOHOST(dest), &n);
+    } else if (strchr("cs[", conv)) {
+      r = fh ? fscanf(fh, spec, (char *) MEM_TOHOST(dest), &n)
+             : sscanf(src + consumed, spec, (char *) MEM_TOHOST(dest), &n);
+    } else if (is_short) {
+      r = fh ? fscanf(fh, spec, (int16_t *) MEM_TOHOST(dest), &n)
+             : sscanf(src + consumed, spec, (int16_t *) MEM_TOHOST(dest), &n);
+    } else {
+      r = fh ? fscanf(fh, spec, (int32_t *) MEM_TOHOST(dest), &n)
+             : sscanf(src + consumed, spec, (int32_t *) MEM_TOHOST(dest), &n);
+    }
+
+    if (n < 0) {
+      /* No match: input failure before any assignment is EOF. */
+      if (r == EOF && assigned == 0)
+        return EOF;
+      break;
+    }
+    consumed += n;
+    if (!suppress)
+      assigned++;
+  }
+
+  return assigned;
+}
+
 #if defined(NATIVE) && defined(NATIVE_FASTCALL)
 static void
 sharedclibrary_build_stubs(WORD first, WORD num)
@@ -1033,13 +1166,24 @@ swih_sharedclibrary_entry(WORD num)
       return 0;
 
     case CLIB_CLIB_SCANF:
-      fprintf(stderr, "scanf not implemented");
-      abort();
+      fflush(stdout);
+      ARM_SET_R0(scan_format_string(stdin, NULL, (char *) MEM_TOHOST(ARM_R0), 1));
       return 0;
-//      arm_va_list = prepare_arm_va_list(MEM_TOHOST(ARM_R0), 1, 1, 0);
-//      ARM_SET_R0(vscanf(MEM_TOHOST(ARM_R0), arm_va_list));
-//      free(arm_va_list);
-//      return 0;
+
+    case CLIB_CLIB_FSCANF:
+      {
+        WORD f = ARM_R0;
+        FILE *fh = clib_file_real(f);
+        ARM_SET_R0(scan_format_string(fh, NULL, (char *) MEM_TOHOST(ARM_R1), 2));
+        if (feof(fh))
+          clib_file_mark_eof(f);
+      }
+      return 0;
+
+    case CLIB_CLIB_SSCANF:
+      ARM_SET_R0(scan_format_string(NULL, (char *) MEM_TOHOST(ARM_R0),
+                                    (char *) MEM_TOHOST(ARM_R1), 2));
+      return 0;
 
     case CLIB_CLIB__PRINTF:
     case CLIB_CLIB_PRINTF:
