@@ -1099,6 +1099,11 @@ swih_sharedclibrary_entry(WORD num)
       osargs();
       return 0;
 
+    case CLIB_KERN_ESCAPE_SEEN:
+      /* There's no Escape key to have been pressed. */
+      ARM_SET_R0(0);
+      return 0;
+
     case CLIB_KERN_UDIV10: /* 4-277 */
       ARM_SET_R1((unsigned) ARM_R0 % 10);
       ARM_SET_R0((unsigned) ARM_R0 / 10);
