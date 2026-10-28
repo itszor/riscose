@@ -31,6 +31,7 @@
 #include "mem.h"
 #include "map.h"
 #include "stub.h"
+#include "util.h"
 
 /* ------------------------------------------------------------------ */
 
@@ -852,10 +853,18 @@ swih_sharedclibrary_entry(WORD num)
 
     case CLIB_CLIB_FREOPEN:
       {
-        FILE *fh = freopen((char *) MEM_TOHOST(ARM_R0), (char *) MEM_TOHOST(ARM_R1), clib_file_real(ARM_R2));
+        char *fn = host_path_from_ro_path((char *) MEM_TOHOST(ARM_R0));
+        FILE *fh = fn == NULL ? NULL :
+          freopen(fn, (char *) MEM_TOHOST(ARM_R1), clib_file_real(ARM_R2));
+        free(fn);
 	/*fprintf(stderr, "reopened file %p `%s' to %p\n", MEM_TOHOST(ARM_R2), MEM_TOHOST(ARM_R0), fh);*/
         if (fh == clib_file_real(ARM_R2)) {
           ARM_SET_R0(ARM_R2);
+        }
+        else if (fh == NULL) {
+          /* The stream may be one of the static stdin/stdout/stderr
+           * blocks, which can't be disposed of. */
+          ARM_SET_R0(0);
         }
         else {
           clib_file_dispose(ARM_R2);
@@ -866,7 +875,9 @@ swih_sharedclibrary_entry(WORD num)
 
     case CLIB_CLIB_FOPEN: /* 4-306 */
       {
-        FILE *fh = fopen((char *) MEM_TOHOST(ARM_R0), (char *) MEM_TOHOST(ARM_R1));
+        char *fn = host_path_from_ro_path((char *) MEM_TOHOST(ARM_R0));
+        FILE *fh = fn == NULL ? NULL : fopen(fn, (char *) MEM_TOHOST(ARM_R1));
+        free(fn);
 	/*fprintf(stderr, "opening file `%s' = %p\n", MEM_TOHOST(ARM_R0), fh);*/
         ARM_SET_R0(fh == NULL ? 0 : clib_file_new(fh));
         return 0;

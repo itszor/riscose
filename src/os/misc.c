@@ -485,7 +485,9 @@ void osfind(void)
             case 0xC0 : flags = "w+b"; break;
         }
         
-        fh = fopen((char *) MEM_TOHOST(ARM_R1), flags);
+        char *fn = host_path_from_ro_path((char *) MEM_TOHOST(ARM_R1));
+        fh = fn == NULL ? NULL : fopen(fn, flags);
+        free(fn);
         if (fh == NULL || !(riscos_fh = osfind_allocate_fh(fh)))
         {
             if (reason & 8)
