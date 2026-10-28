@@ -276,21 +276,24 @@ ARMul_LoadInstrN(ARMul_State *state,ARMword address,ARMword isize)
   return ARMul_ReLoadInstr(state, address, isize);
 }
 
+/* Word accesses ignore the bottom two bits of the address, as the ARM's
+ * memory interface does: an unaligned LDR reads the aligned word (and
+ * ARMul_Align rotates it), an unaligned STR writes the aligned word. */
 inline ARMword ARMul_LoadWordS(ARMul_State *state,ARMword address)
 {
   rsp_check_memory_read(address);
-  return MEM_READ_WORD(address);
+  return MEM_READ_WORD(address & ~3);
 }
 inline ARMword ARMul_LoadWordN(ARMul_State *state,ARMword address)
 {
   rsp_check_memory_read(address);
-  return MEM_READ_WORD(address);
+  return MEM_READ_WORD(address & ~3);
 }
 inline ARMword ARMul_LoadHalfWord(ARMul_State *state,ARMword address)
 {
   ARMword offset = (address & 2) << 3;
   rsp_check_memory_read(address);
-  return (MEM_READ_WORD(address) >> offset) & 0xffff;
+  return (MEM_READ_WORD(address & ~3) >> offset) & 0xffff;
 }
 inline ARMword ARMul_LoadByte(ARMul_State *state,ARMword address)
 {
@@ -300,12 +303,12 @@ inline ARMword ARMul_LoadByte(ARMul_State *state,ARMword address)
 inline void ARMul_StoreWordS(ARMul_State *state,ARMword address, ARMword data)
 {
   rsp_check_memory_write(address);
-  MEM_WRITE_WORD(address, data);
+  MEM_WRITE_WORD(address & ~3, data);
 }
 inline void ARMul_StoreWordN(ARMul_State *state, ARMword address, ARMword data)
 {
   rsp_check_memory_write(address);
-  MEM_WRITE_WORD(address, data);
+  MEM_WRITE_WORD(address & ~3, data);
 }
 inline void ARMul_StoreHalfWord(ARMul_State *state,ARMword address, ARMword data)
 {
@@ -313,7 +316,7 @@ inline void ARMul_StoreHalfWord(ARMul_State *state,ARMword address, ARMword data
   rsp_check_memory_write(address);
   temp = ARMul_ReadWord(state,address);
   offset = (address & 2) << 3;
-  MEM_WRITE_WORD(address, (temp & ~(0xffffL << offset)) | ((data & 0xffff) << offset));
+  MEM_WRITE_WORD(address & ~3, (temp & ~(0xffffL << offset)) | ((data & 0xffff) << offset));
 
 }
 inline void ARMul_StoreByte(ARMul_State *state, ARMword address, ARMword data)
@@ -325,8 +328,8 @@ ARMword ARMul_SwapWord(ARMul_State *state, ARMword address, ARMword data)
 {
   rsp_check_memory_read(address);
   rsp_check_memory_write(address);
-  WORD t = MEM_READ_WORD(address);
-  MEM_WRITE_WORD(address, data);
+  WORD t = MEM_READ_WORD(address & ~3);
+  MEM_WRITE_WORD(address & ~3, data);
   
   return t;
 }
@@ -353,7 +356,7 @@ inline void ARMul_Ccycles(ARMul_State *state, unsigned number, ARMword address)
 // Used for reading instructions
 inline ARMword ARMul_ReadWord(ARMul_State *state, ARMword address)
 {
-  return MEM_READ_WORD(address);
+  return MEM_READ_WORD(address & ~3);
 }
 inline ARMword ARMul_ReadByte(ARMul_State *state, ARMword address)
 {
