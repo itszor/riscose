@@ -783,13 +783,38 @@ swih_sharedclibrary_entry(WORD num)
 
     case CLIB_KERN_SDIV:
     case CLIB_CLIB_XDDIVIDE:
+    case CLIB_KERN_SREM:
+    case CLIB_CLIB_XDREMAINDER:
+      {
+        /* R1 divided by R0, rounding towards zero; INT_MIN / -1 wraps,
+         * as the ARM routines' result does. */
+        int32_t n = (int32_t) ARM_R1, d = (int32_t) ARM_R0;
+        int32_t div = d == -1 ? (int32_t) (0u - (WORD) n) : n / d;
+        int32_t rem = d == -1 ? 0 : n % d;
+        if (SWI_NUM(num) == CLIB_KERN_SREM ||
+            SWI_NUM(num) == CLIB_CLIB_XDREMAINDER) {
+          ARM_SET_R0(rem);
+        } else {
+          ARM_SET_R0(div);
+          ARM_SET_R1(rem);
+        }
+        return 0;
+      }
+
     case CLIB_KERN_UDIV: /* 4-277 */
     case CLIB_CLIB_XDUDIVIDE:
+    case CLIB_KERN_UREM:
+    case CLIB_CLIB_XDUREMAINDER:
       {
         WORD div = ARM_R1 / ARM_R0;
         WORD rem = ARM_R1 % ARM_R0;
-        ARM_SET_R0(div);
-        ARM_SET_R1(rem);
+        if (SWI_NUM(num) == CLIB_KERN_UREM ||
+            SWI_NUM(num) == CLIB_CLIB_XDUREMAINDER) {
+          ARM_SET_R0(rem);
+        } else {
+          ARM_SET_R0(div);
+          ARM_SET_R1(rem);
+        }
         return 0;
       }
 
@@ -902,8 +927,8 @@ swih_sharedclibrary_entry(WORD num)
       return 0;
 
     case CLIB_KERN_SDIV10: /* 4-277 */
-      ARM_SET_R1(ARM_R0 % 10);
-      ARM_SET_R0(ARM_R0 / 10);
+      ARM_SET_R1((int32_t) ARM_R0 % 10);
+      ARM_SET_R0((int32_t) ARM_R0 / 10);
       return 0;
 
     case CLIB_CLIB__MAIN: /* 4-291 */
