@@ -9,6 +9,7 @@
 #include <ctype.h>
 #include <inttypes.h>
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 
 #include "monty/monty.h"
@@ -141,6 +142,110 @@ os_error *xterritory_read_time_zones(territory_t territory,
     return ERR_NO_SUCH_SWI();
 }
 
+/* ---- riscos_format_date_and_time --------------------------------- */
+
+/* Format a 5-byte time (centiseconds since 1900, UTC) as local time, as
+ * OS_ConvertDateAndTime and Territory_ConvertDateAndTime do: the format's
+ * %-codes are two letters (either case), %Z before one drops its leading
+ * zeros, and %% is a %.  *end is left at the terminating null. */
+
+os_error *riscos_format_date_and_time(os_date_and_time *date_and_time,
+    char *buffer,
+    int size,
+    const char *format,
+    char **end)
+{
+    static const char *days[] = { "Sunday", "Monday", "Tuesday",
+        "Wednesday", "Thursday", "Friday", "Saturday" };
+    static const char *months[] = { "January", "February", "March",
+        "April", "May", "June", "July", "August", "September", "October",
+        "November", "December" };
+    uint64_t ts = 0;
+    struct tm *tm;
+    time_t t;
+    char *out = buffer;
+
+    if (date_and_time == NULL || buffer == NULL || format == NULL)
+        return ERR_BAD_PARAMETERS();
+
+    for (size_t i = 0; i < sizeof(*date_and_time); i++) {
+        ts |= ((uint64_t) ((byte *) date_and_time)[i]) << (8*i);
+    }
+    t = (ts / 100) - 2208988800L;
+    tm = localtime(&t);
+    if (tm == NULL)
+        return ERR_BAD_TIME();
+
+    while (*format >= ' ') {
+        char field[32];
+        const char *f = field;
+        int zero = 0, n = -1;
+
+        if (*format != '%') {
+            field[0] = *format++;
+            field[1] = '\0';
+        } else if (format[1] == '%') {
+            strcpy(field, "%");
+            format += 2;
+        } else {
+            char code[3];
+
+            format++;
+            if (toupper((unsigned char) *format) == 'Z') {
+                zero = 1;
+                format++;
+            }
+            if (format[0] < ' ' || format[1] < ' ')
+                return ERR_BAD_PARAMETERS();
+            code[0] = toupper((unsigned char) format[0]);
+            code[1] = toupper((unsigned char) format[1]);
+            code[2] = '\0';
+            format += 2;
+
+            field[0] = '\0';
+            if (!strcmp(code, "CS")) n = ts % 100;
+            else if (!strcmp(code, "SE")) n = tm->tm_sec;
+            else if (!strcmp(code, "MI")) n = tm->tm_min;
+            else if (!strcmp(code, "12")) n = (tm->tm_hour + 11) % 12 + 1;
+            else if (!strcmp(code, "24")) n = tm->tm_hour;
+            else if (!strcmp(code, "AM") || !strcmp(code, "PM"))
+                f = tm->tm_hour < 12 ? "am" : "pm";
+            else if (!strcmp(code, "WE")) f = days[tm->tm_wday];
+            else if (!strcmp(code, "W3")) snprintf(field, sizeof field, "%.3s", days[tm->tm_wday]);
+            else if (!strcmp(code, "WN")) snprintf(field, sizeof field, "%d", tm->tm_wday + 1);
+            else if (!strcmp(code, "DY")) n = tm->tm_mday;
+            else if (!strcmp(code, "ST")) {
+                int d = tm->tm_mday;
+                f = (d / 10 == 1) ? "th" : d % 10 == 1 ? "st" :
+                    d % 10 == 2 ? "nd" : d % 10 == 3 ? "rd" : "th";
+            }
+            else if (!strcmp(code, "MO")) f = months[tm->tm_mon];
+            else if (!strcmp(code, "M3")) snprintf(field, sizeof field, "%.3s", months[tm->tm_mon]);
+            else if (!strcmp(code, "MN")) n = tm->tm_mon + 1;
+            else if (!strcmp(code, "CE")) n = (tm->tm_year + 1900) / 100;
+            else if (!strcmp(code, "YR")) n = tm->tm_year % 100;
+            else if (!strcmp(code, "WK")) strftime(field, sizeof field, "%W", tm);
+            else if (!strcmp(code, "DN")) snprintf(field, sizeof field, zero ? "%d" : "%03d", tm->tm_yday + 1);
+            else if (!strcmp(code, "TZ")) strftime(field, sizeof field, "%Z", tm);
+            else
+                return ERR_BAD_PARAMETERS();
+
+            if (n >= 0)
+                snprintf(field, sizeof field, zero ? "%d" : "%02d", n);
+        }
+
+        if (out - buffer + (int) strlen(f) >= size)
+            return ERR_BUFF_OVERFLOW();
+        strcpy(out, f);
+        out += strlen(f);
+    }
+
+    *out = '\0';
+    if (end != NULL)
+        *end = out;
+    return NULL;
+}
+
 /* ---- xterritory_convert_date_and_time ---------------------------- */
 
 os_error *xterritory_convert_date_and_time(territory_t territory,
@@ -150,7 +255,8 @@ os_error *xterritory_convert_date_and_time(territory_t territory,
     char *format,
     char **end)
 {
-    return ERR_NO_SUCH_SWI();
+    return riscos_format_date_and_time(date_and_time, buffer, size, format,
+        end);
 }
 
 /* ---- xterritory_convert_standard_date_and_time ------------------- */

@@ -2832,13 +2832,18 @@ os_error *xos_convert_standard_date_and_time (os_date_and_time *date_and_time,
  * Other notes:   Emulation of SWI 0xC1.
  */
 
+os_error *riscos_format_date_and_time(os_date_and_time *date_and_time,
+    char *buffer, int size, const char *format, char **end);
+
 os_error *xos_convert_date_and_time (os_date_and_time *date_and_time,
       char *buffer,
       int size,
       char *format,
       char **end)
 {
-  return ERR_NO_SUCH_SWI();
+  /* territory.c: as Territory_ConvertDateAndTime for this territory. */
+  return riscos_format_date_and_time(date_and_time, buffer, size, format,
+      end);
 }
 
 /* ------------------------------------------------------------------------
