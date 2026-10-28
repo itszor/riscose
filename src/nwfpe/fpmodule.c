@@ -52,6 +52,12 @@ void riscose_fpe_init(void)
 	nwfpe_init_fpa(&riscose_thread_info.fpstate);
 }
 
+/* Write the FPSR, as WFS would (the system ID byte is kept). */
+void riscose_fpe_write_fpsr(unsigned int fpsr)
+{
+	writeFPSR(fpsr);
+}
+
 /* Put a double, given as its two words in the FPA's memory order (sign
  * and exponent first), in register Fn, as LDFD would: for riscose's C
  * library, whose functions return doubles in F0. */

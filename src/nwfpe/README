@@ -18,8 +18,8 @@ The files are those of the Linux kernel's arch/arm/nwfpe, as of commit
           FPA's transcendental operations (LOG, LGN, EXP, SIN, COS, TAN,
           ASN, ACS, ATN, POW, RPW, POL), which NWFPE leaves out as the
           FPA10 left them to Acorn's support code, computed in double
-          precision with the host's libm; and the F0 access riscose's
-          Shared C Library needs.
+          precision with the host's libm; and the FPSR and F0 access
+          riscose's Shared C Library needs.
   compat/ the few kernel headers the other files include (thread state,
           get_user/put_user, do_div).
   softfloat-macros

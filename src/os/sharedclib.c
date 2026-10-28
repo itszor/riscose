@@ -524,6 +524,7 @@ static double format_next_double(format_args *args)
  * src/nwfpe); in memory a double's word holding the sign and exponent
  * comes first. */
 void riscose_fpe_load_double(unsigned int Fn, unsigned int hi, unsigned int lo);
+void riscose_fpe_write_fpsr(unsigned int fpsr);
 
 static double clib_arg_double(WORD n)
 {
@@ -941,6 +942,9 @@ swih_sharedclibrary_entry(WORD num)
        ARM_SET_R11(0);
        ARM_SET_R12(0);
        ARM_SET_R13(MMAP_USRSTACK_BASE+ MMAP_USRSTACK_SIZE);
+       /* The library enables the FPA's invalid operation, division by
+        * zero and overflow traps (WFS #&70000). */
+       riscose_fpe_write_fpsr(0x00070000);
        while (c != limit)
          {
           if (language_description[c+4] != 0)
