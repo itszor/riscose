@@ -1349,6 +1349,25 @@ swih_sharedclibrary_entry(WORD num)
       memmove(MEM_TOHOST(ARM_R0), MEM_TOHOST(ARM_R1), ARM_R2);
       return 0;
 
+    case CLIB_CLIB_ABS:
+    case CLIB_CLIB_LABS:
+      ARM_SET_R0((int32_t) ARM_R0 < 0 ? 0u - ARM_R0 : ARM_R0);
+      return 0;
+
+    case CLIB_CLIB_DIV:
+    case CLIB_CLIB_LDIV:
+      /* div_t and ldiv_t are returned through the address in R0. */
+      {
+        int32_t n = (int32_t) ARM_R1, d = (int32_t) ARM_R2;
+        MEM_WRITE_WORD(ARM_R0, d == -1 ? 0u - (WORD) n : (WORD) (n / d));
+        MEM_WRITE_WORD(ARM_R0 + 4, d == -1 ? 0 : (WORD) (n % d));
+      }
+      return 0;
+
+    case CLIB_CLIB_MEMCMP:
+      ARM_SET_R0(memcmp(MEM_TOHOST(ARM_R0), MEM_TOHOST(ARM_R1), ARM_R2));
+      return 0;
+
     case CLIB_CLIB_STRCPY: /* 4-328 */
       strcpy((char *) MEM_TOHOST(ARM_R0), (char *) MEM_TOHOST(ARM_R1));
       return 0;
