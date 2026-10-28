@@ -241,7 +241,20 @@ os_error *xosfile_stamp (char *file_name)
 os_error *xosfile_set_type (char *file_name,
       bits file_type)
 {
-  return ERR_NO_SUCH_SWI();
+  struct stat statbuf;
+  char *fn;
+  int r;
+
+  /* FIXME --- file types aren't kept on the host; like OS_File 2 and 9,
+   * accept the call (for Norcroft's linker) if the object exists. */
+
+  fn = host_path_from_ro_path(file_name);
+  if (fn == NULL)
+    return ERR_SYS_HEAP_FULL();
+  r = stat(fn, &statbuf);
+  free(fn);
+
+  return r == 0 ? 0 : ERR_FILE_NOT_FOUND();
 }
 
 /* ------------------------------------------------------------------------
