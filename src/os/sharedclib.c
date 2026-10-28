@@ -482,72 +482,177 @@ static void do_sprintf(format_output *dest, const char *out) {
   return;
 }
 
+/* Where the arguments to be formatted come from: the APCS argument
+ * registers and stack, or an Acorn C va_list (char *[1], so the vprintf
+ * family is passed the address of the argument pointer). */
+typedef struct {
+  WORD is_vararg;
+  WORD apcs_arg;
+  WORD va_ptr;
+} format_args;
+
+static WORD format_next_arg(format_args *args)
+{
+  WORD w;
+
+  if (args->is_vararg) {
+    w = MEM_READ_WORD(args->va_ptr);
+    args->va_ptr += 4;
+  } else {
+    w = ARM_APCS_ARG(args->apcs_arg);
+    args->apcs_arg++;
+  }
+  return w;
+}
+
+/* Doubles are passed as two words, in the FPA's order: the word holding
+ * the sign and exponent first. */
+static double format_next_double(format_args *args)
+{
+  uint64_t bits = (uint64_t) format_next_arg(args) << 32;
+  double d;
+
+  bits |= format_next_arg(args);
+  memcpy(&d, &bits, sizeof d);
+  return d;
+}
+
+static void format_literal(formatter_t formatter, format_output *output,
+                           const char *begin, const char *end)
+{
+  char *buffer;
+
+  if (end == begin)
+    return;
+  buffer = strndup(begin, end - begin);
+  formatter(output, buffer);
+  free(buffer);
+}
+
 static int
 split_format_string(char *str, WORD apcs_arg, WORD is_scanf, WORD is_vararg, formatter_t formatter, format_output *output)
 {
-  int* varargs;
-  int vararg_n = 0;
-  int this_arg;
+  format_args args;
   char *begin = str;
   int length = 0;
   char *buffer;
-  char *slice;
+  char spec[64];
+  size_t n;
+  int r;
 
-  if (is_vararg)
-    varargs = (int*) MEM_TOHOST(ARM_APCS_ARG(apcs_arg)) + 6;
-  else
-    varargs = NULL; /* avoid compiler warning */
+  args.is_vararg = is_vararg;
+  args.apcs_arg = apcs_arg;
+  args.va_ptr = is_vararg ? MEM_READ_WORD(ARM_APCS_ARG(apcs_arg)) : 0;
 
-  while (*str)
-    switch (*str++)
-      {
-      case '%':
-        // TODO: check that full spec is implemented
-        // http://riscos.com/support/developers/c/clib.html#idx-102
-        if (*str == '%') { str++; continue; }
-        while (strchr("#- +'", *str))      str++;
-        if (*str == '-')                   str++;
-        while (strchr("0123456789", *str)) str++;
-        if (*str == '.')                   str++;
-        while (strchr("0123456789", *str)) str++;
-        while (strchr("hlLqjzt", *str))    str++;
+  while (*str) {
+    if (*str != '%') {
+      str++;
+      continue;
+    }
 
-        if (is_vararg) {
-          this_arg = varargs[vararg_n];
-          vararg_n++;
-        } else {
-          this_arg = ARM_APCS_ARG(apcs_arg);
-          apcs_arg++;
-        }
+    format_literal(formatter, output, begin, str);
+    length += str - begin;
+    str++;
 
-        // str should now point at the format code.
-        // XXX what if the string ends with a percent without a code?
-        slice = malloc(sizeof(char)*(str - begin + 2));
-        strncpy(slice, begin, str-begin+1);
-        slice[str-begin+1] = 0;
+    if (*str == '%') {
+      formatter(output, "%");
+      length++;
+      begin = ++str;
+      continue;
+    }
 
-        begin = str+1;
-
-        // TODO Handle %p for RISC OS.
-        if (*str++ == 's' || is_scanf)
-          length += asprintf(&buffer, slice, MEM_TOHOST(this_arg));
-        else
-          length += asprintf(&buffer, slice, this_arg);
-
-        free(slice);
-        formatter(output, buffer);
-        free(buffer);
-
-        break;
-
-      default:
-        continue;
+    /* Rebuild the conversion for the host: flags, width and precision
+     * as given (a '*' replaced by its argument), length modifiers
+     * dropped, since everything but a double is one 32-bit word. */
+    // http://riscos.com/support/developers/c/clib.html#idx-102
+    n = 0;
+    spec[n++] = '%';
+    while (*str && strchr("#- +0", *str) && n < sizeof spec - 16)
+      spec[n++] = *str++;
+    if (*str == '*') {
+      n += snprintf(spec + n, sizeof spec - n, "%d", (int) format_next_arg(&args));
+      str++;
+    }
+    while (*str && strchr("0123456789", *str) && n < sizeof spec - 16)
+      spec[n++] = *str++;
+    if (*str == '.') {
+      spec[n++] = *str++;
+      if (*str == '*') {
+        n += snprintf(spec + n, sizeof spec - n, "%d", (int) format_next_arg(&args));
+        str++;
       }
+      while (*str && strchr("0123456789", *str) && n < sizeof spec - 16)
+        spec[n++] = *str++;
+    }
+    while (*str && strchr("hlLqjzt", *str))
+      str++;
 
-  length += asprintf(&buffer, "%s", begin);
-  formatter(output, buffer);
-  free(buffer);
+    if (*str == '\0') {
+      /* A '%' with no conversion: print what there was. */
+      begin = str;
+      break;
+    }
 
+    spec[n++] = *str;
+    spec[n] = '\0';
+
+    switch (*str) {
+    case 'd':
+    case 'i':
+      r = asprintf(&buffer, spec, (int32_t) format_next_arg(&args));
+      break;
+
+    case 'u':
+    case 'o':
+    case 'x':
+    case 'X':
+    case 'c':
+      r = asprintf(&buffer, spec, (uint32_t) format_next_arg(&args));
+      break;
+
+    case 'p':
+      spec[n - 1] = 'x';
+      r = asprintf(&buffer, spec, (uint32_t) format_next_arg(&args));
+      break;
+
+    case 's':
+      {
+        WORD s = format_next_arg(&args);
+        r = asprintf(&buffer, spec, s ? (char *) MEM_TOHOST(s) : "(null)");
+      }
+      break;
+
+    case 'e':
+    case 'E':
+    case 'f':
+    case 'g':
+    case 'G':
+      r = asprintf(&buffer, spec, format_next_double(&args));
+      break;
+
+    case 'n':
+      MEM_WRITE_WORD(format_next_arg(&args), length);
+      r = asprintf(&buffer, "%s", "");
+      break;
+
+    default:
+      /* Unknown conversion: print it as it is. */
+      r = asprintf(&buffer, "%s", spec);
+      break;
+    }
+
+    if (r >= 0) {
+      formatter(output, buffer);
+      length += r;
+      free(buffer);
+    }
+    begin = ++str;
+  }
+
+  format_literal(formatter, output, begin, str);
+  length += str - begin;
+
+  (void) is_scanf;
   return length;
 }
 
@@ -897,6 +1002,7 @@ swih_sharedclibrary_entry(WORD num)
       {
         format_output output;
         output.str = (char *) MEM_TOHOST(ARM_R0);
+        *output.str = '\0';
         ARM_SET_R0(split_format_string((char *) MEM_TOHOST(ARM_R1), 2, 0, 0, do_sprintf, &output));
       }
       return 0;
@@ -949,6 +1055,7 @@ swih_sharedclibrary_entry(WORD num)
       {
         format_output output;
         output.str = (char *) MEM_TOHOST(ARM_R0);
+        *output.str = '\0';
         ARM_SET_R0(split_format_string((char *) MEM_TOHOST(ARM_R1), 2, 0, 1, do_sprintf, &output));
       }
       return 0;
