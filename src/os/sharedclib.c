@@ -552,6 +552,34 @@ static void clib_store_double(WORD addr, double d)
   MEM_WRITE_WORD(addr + 4, (WORD) bits);
 }
 
+/* A struct tm in the program's memory: nine ints, tm_sec to tm_isdst. */
+static void clib_load_tm(WORD addr, struct tm *tm)
+{
+  memset(tm, 0, sizeof *tm);
+  tm->tm_sec   = (int32_t) MEM_READ_WORD(addr);
+  tm->tm_min   = (int32_t) MEM_READ_WORD(addr + 4);
+  tm->tm_hour  = (int32_t) MEM_READ_WORD(addr + 8);
+  tm->tm_mday  = (int32_t) MEM_READ_WORD(addr + 12);
+  tm->tm_mon   = (int32_t) MEM_READ_WORD(addr + 16);
+  tm->tm_year  = (int32_t) MEM_READ_WORD(addr + 20);
+  tm->tm_wday  = (int32_t) MEM_READ_WORD(addr + 24);
+  tm->tm_yday  = (int32_t) MEM_READ_WORD(addr + 28);
+  tm->tm_isdst = (int32_t) MEM_READ_WORD(addr + 32);
+}
+
+static void clib_store_tm(WORD addr, const struct tm *tm)
+{
+  MEM_WRITE_WORD(addr,      tm->tm_sec);
+  MEM_WRITE_WORD(addr + 4,  tm->tm_min);
+  MEM_WRITE_WORD(addr + 8,  tm->tm_hour);
+  MEM_WRITE_WORD(addr + 12, tm->tm_mday);
+  MEM_WRITE_WORD(addr + 16, tm->tm_mon);
+  MEM_WRITE_WORD(addr + 20, tm->tm_year);
+  MEM_WRITE_WORD(addr + 24, tm->tm_wday);
+  MEM_WRITE_WORD(addr + 28, tm->tm_yday);
+  MEM_WRITE_WORD(addr + 32, tm->tm_isdst);
+}
+
 /* A long is 32 bits: a host long beyond that range is clamped, as the
  * library's strtol would have. */
 static WORD clib_long(long l)
@@ -1543,6 +1571,60 @@ swih_sharedclibrary_entry(WORD num)
         char *riscos_ctr = mem_rma_alloc(strlen(ctr)+1);
         ARM_SET_R0(MEM_TOARM(riscos_ctr));
         strcpy(riscos_ctr, ctr);
+      }
+      return 0;
+
+    /* struct tm is C89's nine ints, tm_sec to tm_isdst; gmtime and
+     * localtime return one, and asctime a string, in a static buffer. */
+    case CLIB_CLIB_GMTIME:
+    case CLIB_CLIB_LOCALTIME:
+      {
+        static WORD tm_buf;
+        time_t t = (time_t) (int32_t) MEM_READ_WORD(ARM_R0);
+        struct tm *tm = SWI_NUM(num) == CLIB_CLIB_GMTIME ? gmtime(&t)
+                                                         : localtime(&t);
+        if (tm == NULL) {
+          ARM_SET_R0(0);
+          return 0;
+        }
+        if (tm_buf == 0)
+          tm_buf = MEM_TOARM(mem_rma_alloc(9 * 4));
+        clib_store_tm(tm_buf, tm);
+        ARM_SET_R0(tm_buf);
+      }
+      return 0;
+
+    case CLIB_CLIB_MKTIME:
+      {
+        struct tm tm;
+        time_t t;
+        WORD tm_ptr = ARM_R0;
+        clib_load_tm(tm_ptr, &tm);
+        t = mktime(&tm);
+        if (t != (time_t) -1)
+          clib_store_tm(tm_ptr, &tm);
+        ARM_SET_R0((WORD) t);
+      }
+      return 0;
+
+    case CLIB_CLIB_ASCTIME:
+      {
+        static WORD str_buf;
+        struct tm tm;
+        clib_load_tm(ARM_R0, &tm);
+        if (str_buf == 0)
+          str_buf = MEM_TOARM(mem_rma_alloc(32));
+        strftime((char *) MEM_TOHOST(str_buf), 32, "%a %b %d %H:%M:%S %Y\n", &tm);
+        ARM_SET_R0(str_buf);
+      }
+      return 0;
+
+    case CLIB_CLIB_STRFTIME: /* (char *s, size_t max, const char *fmt, tm *) */
+      {
+        struct tm tm;
+        clib_load_tm(ARM_R3, &tm);
+        ARM_SET_R0(strftime((char *) MEM_TOHOST(ARM_R0), ARM_R1,
+                            (char *) MEM_TOHOST(ARM_R2), &tm));
       }
       return 0;
 
