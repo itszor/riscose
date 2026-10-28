@@ -137,7 +137,10 @@ os_error* swi_trap(WORD num)
         int i = swih_sharedclibrary_entry(num);
         // sharedclib calls aren't really SWIs, so shouldn't return an error.
         if (i != SWIH_EXIT_HANDLED) {
-            arm_set_pc(ARM_R14);
+            /* Return as the library's functions do, MOVS pc, lr: the
+             * caller's flags come back from R14 (APCS-R; compiled code
+             * relies on them across a conditional call). */
+            arm_set_reg(15, ARM_R14);
         }
 
 #ifdef CONFIG_TRACE_SWIS
