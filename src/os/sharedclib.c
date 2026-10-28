@@ -220,7 +220,7 @@ static char *kernel_entry_point_name(int num) {
     X(VPRINTF, 0x1161) \
     X(VFPRINTF, 0x1162) \
     X(VSPRINTF, 0x1163) \
-    X(_VPRINTF, 0x1164) \
+    X(_VFPRINTF, 0x1164) \
     X(FGETC, 0x1165) \
     X(FGETS, 0x1166) \
     X(FPUTC, 0x1167) \
@@ -1248,7 +1248,6 @@ swih_sharedclibrary_entry(WORD num)
       }
       return 0;
 
-    case CLIB_CLIB__VPRINTF:
     case CLIB_CLIB_VPRINTF:
       {
         format_output output;
@@ -1257,6 +1256,7 @@ swih_sharedclibrary_entry(WORD num)
       }
       return 0;
 
+    case CLIB_CLIB__VFPRINTF:
     case CLIB_CLIB_VFPRINTF: /* 4-312 */
       {
         format_output output;
