@@ -18,6 +18,8 @@
 #include <ctype.h>
 #include <time.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <math.h>
 #include <assert.h>
 
 #include "config.h"
@@ -515,6 +517,45 @@ static double format_next_double(format_args *args)
   bits |= format_next_arg(args);
   memcpy(&d, &bits, sizeof d);
   return d;
+}
+
+/* Doubles to and from the program. APCS-R passes a double argument in two
+ * argument words, and the C library returns one in the FPA's F0 (NWFPE's,
+ * src/nwfpe); in memory a double's word holding the sign and exponent
+ * comes first. */
+void riscose_fpe_load_double(unsigned int Fn, unsigned int hi, unsigned int lo);
+
+static double clib_arg_double(WORD n)
+{
+  uint64_t bits = ((uint64_t) ARM_APCS_ARG(n) << 32) | ARM_APCS_ARG(n + 1);
+  double d;
+
+  memcpy(&d, &bits, sizeof d);
+  return d;
+}
+
+static void clib_return_double(double d)
+{
+  uint64_t bits;
+
+  memcpy(&bits, &d, sizeof bits);
+  riscose_fpe_load_double(0, (WORD) (bits >> 32), (WORD) bits);
+}
+
+static void clib_store_double(WORD addr, double d)
+{
+  uint64_t bits;
+
+  memcpy(&bits, &d, sizeof bits);
+  MEM_WRITE_WORD(addr, (WORD) (bits >> 32));
+  MEM_WRITE_WORD(addr + 4, (WORD) bits);
+}
+
+/* A long is 32 bits: a host long beyond that range is clamped, as the
+ * library's strtol would have. */
+static WORD clib_long(long l)
+{
+  return l > INT32_MAX ? INT32_MAX : l < INT32_MIN ? (WORD) INT32_MIN : (WORD) l;
 }
 
 static void format_literal(formatter_t formatter, format_output *output,
@@ -1373,6 +1414,81 @@ swih_sharedclibrary_entry(WORD num)
         BYTE *str = MEM_TOHOST(armr0);
         WORD x = strlen((char *) str);
         ARM_SET_R0(x);
+      }
+      return 0;
+
+    /* math.h */
+    case CLIB_CLIB_ACOS:  clib_return_double(acos(clib_arg_double(0)));  return 0;
+    case CLIB_CLIB_ASIN:  clib_return_double(asin(clib_arg_double(0)));  return 0;
+    case CLIB_CLIB_ATAN:  clib_return_double(atan(clib_arg_double(0)));  return 0;
+    case CLIB_CLIB_COS:   clib_return_double(cos(clib_arg_double(0)));   return 0;
+    case CLIB_CLIB_SIN:   clib_return_double(sin(clib_arg_double(0)));   return 0;
+    case CLIB_CLIB_TAN:   clib_return_double(tan(clib_arg_double(0)));   return 0;
+    case CLIB_CLIB_COSH:  clib_return_double(cosh(clib_arg_double(0)));  return 0;
+    case CLIB_CLIB_SINH:  clib_return_double(sinh(clib_arg_double(0)));  return 0;
+    case CLIB_CLIB_TANH:  clib_return_double(tanh(clib_arg_double(0)));  return 0;
+    case CLIB_CLIB_EXP:   clib_return_double(exp(clib_arg_double(0)));   return 0;
+    case CLIB_CLIB_LOG:   clib_return_double(log(clib_arg_double(0)));   return 0;
+    case CLIB_CLIB_LOG10: clib_return_double(log10(clib_arg_double(0))); return 0;
+    case CLIB_CLIB_SQRT:  clib_return_double(sqrt(clib_arg_double(0)));  return 0;
+    case CLIB_CLIB_CEIL:  clib_return_double(ceil(clib_arg_double(0)));  return 0;
+    case CLIB_CLIB_FABS:  clib_return_double(fabs(clib_arg_double(0)));  return 0;
+    case CLIB_CLIB_FLOOR: clib_return_double(floor(clib_arg_double(0))); return 0;
+
+    case CLIB_CLIB_ATAN2:
+      clib_return_double(atan2(clib_arg_double(0), clib_arg_double(2)));
+      return 0;
+    case CLIB_CLIB_POW:
+      clib_return_double(pow(clib_arg_double(0), clib_arg_double(2)));
+      return 0;
+    case CLIB_CLIB_FMOD:
+      clib_return_double(fmod(clib_arg_double(0), clib_arg_double(2)));
+      return 0;
+    case CLIB_CLIB_LDEXP: /* (double, int) */
+      clib_return_double(ldexp(clib_arg_double(0), (int32_t) ARM_R2));
+      return 0;
+    case CLIB_CLIB_FREXP: /* (double, int *) */
+      {
+        int e;
+        WORD exp_ptr = ARM_R2;
+        clib_return_double(frexp(clib_arg_double(0), &e));
+        MEM_WRITE_WORD(exp_ptr, e);
+      }
+      return 0;
+    case CLIB_CLIB_MODF: /* (double, double *) */
+      {
+        double ip;
+        WORD ip_ptr = ARM_R2;
+        clib_return_double(modf(clib_arg_double(0), &ip));
+        clib_store_double(ip_ptr, ip);
+      }
+      return 0;
+
+    /* stdlib.h number conversions */
+    case CLIB_CLIB_ATOF:
+      clib_return_double(atof((char *) MEM_TOHOST(ARM_R0)));
+      return 0;
+    case CLIB_CLIB_ATOI:
+    case CLIB_CLIB_ATOL:
+      ARM_SET_R0(clib_long(strtol((char *) MEM_TOHOST(ARM_R0), NULL, 10)));
+      return 0;
+    case CLIB_CLIB_STRTOD:
+    case CLIB_CLIB_STRTOL:
+    case CLIB_CLIB_STRTOUL:
+      {
+        char *s = (char *) MEM_TOHOST(ARM_R0), *end;
+        WORD end_ptr = ARM_R1;
+
+        if (SWI_NUM(num) == CLIB_CLIB_STRTOD) {
+          clib_return_double(strtod(s, &end));
+        } else if (SWI_NUM(num) == CLIB_CLIB_STRTOL) {
+          ARM_SET_R0(clib_long(strtol(s, &end, (int32_t) ARM_R2)));
+        } else {
+          unsigned long u = strtoul(s, &end, (int32_t) ARM_R2);
+          ARM_SET_R0(u > UINT32_MAX ? UINT32_MAX : (WORD) u);
+        }
+        if (end_ptr)
+          MEM_WRITE_WORD(end_ptr, MEM_TOARM(end));
       }
       return 0;
 

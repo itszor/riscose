@@ -52,6 +52,17 @@ void riscose_fpe_init(void)
 	nwfpe_init_fpa(&riscose_thread_info.fpstate);
 }
 
+/* Put a double, given as its two words in the FPA's memory order (sign
+ * and exponent first), in register Fn, as LDFD would: for riscose's C
+ * library, whose functions return doubles in F0. */
+void riscose_fpe_load_double(unsigned int Fn, unsigned int hi, unsigned int lo)
+{
+	FPA11 *fpa11 = GET_FPA11();
+
+	fpa11->fType[Fn & 7] = typeDouble;
+	fpa11->fpreg[Fn & 7].fDouble = ((float64) hi << 32) | lo;
+}
+
 /*
  * The FPA's transcendental operations - LOG, LGN, EXP, SIN, COS, TAN, ASN,
  * ACS, ATN, POW, RPW and POL - which NWFPE leaves out, as the FPA10 left
