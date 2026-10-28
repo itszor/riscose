@@ -1029,7 +1029,7 @@ swih_sharedclibrary_entry(WORD num)
       }
 
     case CLIB_CLIB_SIGNAL: /* 4-302 */
-      printf("signal %d = %d\n", (unsigned)ARM_R0, (unsigned)ARM_R1);
+      DEBUG(SWI, ("signal %d = %#x\n", (unsigned)ARM_R0, (unsigned)ARM_R1));
       return 0;
 
 
@@ -1181,7 +1181,7 @@ swih_sharedclibrary_entry(WORD num)
       return 0;
 
     case CLIB_CLIB_SETLOCALE: /* 4-298 */
-      printf("setlocale called\n"); /* FIXME */
+      DEBUG(SWI, ("setlocale called\n")); /* FIXME */
       ARM_SET_R0(0);
       return 0;
 
@@ -1383,7 +1383,7 @@ swih_sharedclibrary_entry(WORD num)
       return 0;
 
     case CLIB_CLIB_GETENV: /* 4-323 */
-      printf("getenv called for %s\n", MEM_TOHOST(ARM_R0));
+      DEBUG(SWI, ("getenv called for %s\n", (char *) MEM_TOHOST(ARM_R0)));
       ARM_SET_R0(0);
       return 0;
 
