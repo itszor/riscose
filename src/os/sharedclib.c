@@ -1377,7 +1377,12 @@ swih_sharedclibrary_entry(WORD num)
       return 0;
 
     case CLIB_CLIB_CLOCK: /* 4-333 */
-      ARM_SET_R0(clock());
+      {
+        /* RISC OS's clock() counts centiseconds (CLOCKS_PER_SEC 100). */
+        clock_t c = clock();
+        ARM_SET_R0(c == (clock_t) -1 ? (WORD) -1
+                   : (WORD) (c / (CLOCKS_PER_SEC / 100)));
+      }
       return 0;
 
     case CLIB_CLIB_CTIME: /* 4-334 */
