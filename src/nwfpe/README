@@ -1,0 +1,34 @@
+NWFPE for riscose
+=================
+
+NWFPE, the NetWinder Floating Point Emulator (Scott Bambrough, Rebel.com,
+1998-1999, on John Hauser's SoftFloat), emulates the FPA: the floating
+point instructions (coprocessors 1 and 2) that Acorn C and other RISC OS
+compilers generate, which RISC OS carries out with its FPEmulator module.
+
+The files are those of the Linux kernel's arch/arm/nwfpe, as of commit
+47ba5f39eab3c2a9a1ba878159a6050f2bbfc0e2 (17 May 2023), unchanged, except:
+
+  fpmodule.c, fpmodule.inl
+          riscose's own versions of NWFPE's port layer (the kernel's
+          module glue and pt_regs access): one FPA, set up by
+          riscose_fpe_init(); registers, flags and memory reached through
+          src/armul/arm.c; a trapped exception reported there rather than
+          sent as SIGFPE.
+  compat/ the few kernel headers the other files include (thread state,
+          get_user/put_user, do_div).
+  softfloat-macros
+          shift64RightJamming's two ARM assembler comment markers
+          (__asm__("@...")) are kept to ARM hosts (#ifdef __arm__): other
+          hosts' assemblers reject them.
+
+Not taken: entry.S and the kernel's Makefile.
+
+src/armul/armsupp.c hands coprocessor 1 and 2 instructions to
+ARMul_FPEInstr() (src/armul/arm.c), which calls NWFPE's EmulateAll(); NWFPE
+does the instruction's memory accesses and base write-back itself.
+Extended precision is on (CONFIG_FPE_NWFPE_XP). Not emulated, as in NWFPE:
+packed decimal (LDFP/STFP) and trapped exceptions' delivery to the program.
+
+NWFPE is GPL-2.0-or-later; SoftFloat (softfloat*, milieu.h, ARM-gcc.h)
+carries its own notice, in those files.

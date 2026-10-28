@@ -68,7 +68,9 @@ INLINE void shift64RightJamming( bits64 a, int16 count, bits64 *zPtr )
 {
     bits64 z;
 
+#ifdef __arm__
  __asm__("@shift64RightJamming -- start");   
+#endif
     if ( count == 0 ) {
         z = a;
     }
@@ -78,7 +80,9 @@ INLINE void shift64RightJamming( bits64 a, int16 count, bits64 *zPtr )
     else {
         z = ( a != 0 );
     }
+#ifdef __arm__
  __asm__("@shift64RightJamming -- end");   
+#endif
     *zPtr = z;
 }
 
