@@ -292,7 +292,10 @@ void mem_init(void)
 
     memcpy(_binary_foo_bar_start, MEM_TOHOST(MMAP_ROM_BASE));
 #else
-    mem->rma      = emalloc(RMA_START_SIZE);
+    /* All of the RMA's address range, so that it never moves as it
+     * grows: the heap, and anything else holding a host pointer into
+     * it, would be left pointing at freed memory. */
+    mem->rma      = emalloc(MMAP_RMA_SIZE);
     mem->rom      = (BYTE *) _binary_romimage_start;
 #endif
     mem->svc_stack = emalloc(MMAP_SVCSTACK_SIZE);
@@ -425,12 +428,20 @@ static
 int
 mem_extend_rma(WORD size_to_accommodate)
 {
-  WORD newsize = mem->rma_size * 2;
-  
+  WORD newsize = mem->rma_size;
+
+  /* Double it until there's room (with some to spare for the heap's
+   * own block headers), up to the RMA's address range. */
+  while (newsize < mem->rma_size + size_to_accommodate + 1024 &&
+         newsize < MMAP_RMA_SIZE)
+    newsize *= 2;
+  if (newsize > MMAP_RMA_SIZE)
+    newsize = MMAP_RMA_SIZE;
+  if (newsize == mem->rma_size)
+    return -1;
+
 #ifdef CONFIG_MEM_ONE2ONE
   remap_it(MMAP_RMA_BASE, mem->rma_size, newsize);
-#else
-  assert( (mem->rma = realloc(mem->rma, newsize)) != 0);
 #endif
   mem->rma_size = newsize;
   return heap_resize((heap_t*) mem->rma, newsize);
