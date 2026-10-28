@@ -1547,9 +1547,13 @@ swih_sharedclibrary_entry(WORD num)
       return 0;
 
     case CLIB_CLIB_TIME: /* 4-334 */
-      ARM_SET_R0((WORD) time(NULL));
-      if (ARM_R1 != 0)
-        MEM_WRITE_WORD(ARM_R1, ARM_R0);
+      {
+        /* time(time_t *timer): the pointer is in R0. */
+        WORD timer = ARM_R0;
+        ARM_SET_R0((WORD) time(NULL));
+        if (timer != 0)
+          MEM_WRITE_WORD(timer, ARM_R0);
+      }
       return 0;
 
     case CLIB_CLIB_TMPNAM:
