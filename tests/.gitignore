@@ -4,3 +4,7 @@ armas
 tmp
 tmp.1
 tmp.2
+# Test suite products (rom is a link setuprom makes)
+*.log
+*.trs
+/rom
