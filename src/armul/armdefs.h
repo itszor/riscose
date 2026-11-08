@@ -236,7 +236,7 @@ extern ARMword ARMul_DoInstr(ARMul_State *state) ;
 *                Definitons of things for event handling                    *
 \***************************************************************************/
 
-extern void ARMul_ScheduleEvent(ARMul_State *state, unsigned long delay, unsigned (*func)() ) ;
+extern void ARMul_ScheduleEvent(ARMul_State *state, unsigned long delay, unsigned (*func)(ARMul_State *) ) ;
 extern void ARMul_EnvokeEvent(ARMul_State *state) ;
 extern unsigned long ARMul_Time(ARMul_State *state) ;
 

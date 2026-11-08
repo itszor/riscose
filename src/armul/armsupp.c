@@ -64,13 +64,13 @@ unsigned IntPending(ARMul_State *state) ;
 ARMword ARMul_Align(ARMul_State *state, ARMword address, ARMword data) ;
 
 void ARMul_ScheduleEvent(ARMul_State *state, unsigned long delay,
-                         unsigned (*what)()) ;
+                         unsigned (*what)(ARMul_State *)) ;
 void ARMul_EnvokeEvent(ARMul_State *state) ;
 unsigned long ARMul_Time(ARMul_State *state) ;
 static void EnvokeList(ARMul_State *state, unsigned long from, unsigned long to) ;
 
 struct EventNode { /* An event list node */
-      unsigned (*func)() ; /* The function to call */
+      unsigned (*func)(ARMul_State *) ; /* The function to call */
       struct EventNode *next ;
       } ;
 
@@ -675,7 +675,7 @@ ARMword ARMul_Align(ARMul_State *state, ARMword address, ARMword data)
 * to the function. A delay of zero doesn't work, just call the function.    *
 \***************************************************************************/
 
-void ARMul_ScheduleEvent(ARMul_State *state, unsigned long delay, unsigned (*what)())
+void ARMul_ScheduleEvent(ARMul_State *state, unsigned long delay, unsigned (*what)(ARMul_State *))
 {unsigned long when ;
  struct EventNode *event ;
 
